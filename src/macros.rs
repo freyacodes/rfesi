@@ -136,7 +136,7 @@ macro_rules! api_get {
         $( ($param:ident: $param_t:ty) => $replace:literal ),*
     ) => {
         $(#[$m])*
-        pub async fn $fn_name(&self, $( $param: $param_t, )*) -> EsiResult<$ret_type> {
+        pub async fn $fn_name(&self, $( $param: $param_t, )*) -> EsiResult<EsiResponse<$ret_type>> {
             let path = self
                 .esi
                 .get_endpoint_for_op_id($op_id)?
@@ -164,7 +164,7 @@ macro_rules! api_get {
             $( $param: $param_t, )*
             $($( $qparam: $qparam_t, )*)?
             $($( $opt_qparam: Option<$opt_qparam_t>, )*)?
-        ) -> EsiResult<$ret_type> {
+        ) -> EsiResult<EsiResponse<$ret_type>> {
             let path = self
                 .esi
                 .get_endpoint_for_op_id($op_id)?
@@ -229,7 +229,7 @@ macro_rules! api_get {
 ///
 /// ```rust,ignore
 /// /// Docs for the generated function
-/// pub async fn function_name(&self, alliance_id: u64, ids: &[u64]) -> EsiResult<Vec<u64>> {
+/// pub async fn function_name(&self, alliance_id: u64, ids: &[u64]) -> EsiResult<EsiResponse<Vec<u64>>> {
 ///     let path = self.esi.get_endpoint_for_op_id("some_operation_id")?
 ///         .replace("{alliance_id}", &alliance_id.to_string());
 ///     let body = serde_json::to_string(ids);
@@ -250,7 +250,7 @@ macro_rules! api_post {
         $body_param:ident: $param_type:ty,
     ) => {
         $(#[$m])*
-        pub async fn $fn_name(&self, $( $param: $param_t, )* $body_param: $param_type) -> EsiResult<$ret_type> {
+        pub async fn $fn_name(&self, $( $param: $param_t, )* $body_param: $param_type) -> EsiResult<EsiResponse<$ret_type>> {
             let path = self
                 .esi
                 .get_endpoint_for_op_id($op_id)?

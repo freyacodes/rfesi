@@ -7,10 +7,7 @@ use base64::engine::{general_purpose::STANDARD as base64, Engine};
 use log::{debug, error, warn};
 #[cfg(feature = "random_state")]
 use rand::{distributions::Alphanumeric, Rng};
-use reqwest::{
-    header::{self, HeaderMap, HeaderValue},
-    Client, Method,
-};
+use reqwest::{header::{self, HeaderMap, HeaderValue}, Client, Method, Response};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::cell::Cell;
@@ -19,6 +16,7 @@ use std::{
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
+use thiserror::__private::AsDynError;
 
 const BASE_URL: &str = "https://esi.evetech.net/";
 const AUTHORIZE_URL: &str = "https://login.eveonline.com/v2/oauth/authorize";
@@ -81,11 +79,12 @@ pub struct AuthenticationInformation {
     pub pkce_verifier: Option<PkceVerifier>,
 }
 
-/// .
-#[cfg(feature = "return_headers")]
-pub struct ResponseWrapper<T> {
-    data: T,
-    headers: (),
+/// Holds the response data and headers of a successful ESI response 
+pub struct EsiResponse<T> {
+    /// Formed from the HTTP response body
+    pub data: T,
+    /// Headers from
+    pub headers: HeaderMap,
 }
 
 /// Struct to interact with ESI.
@@ -512,10 +511,9 @@ impl Esi {
     /// #     .unwrap();
     /// #[derive(Deserialize)]
     /// struct ReturnedData {}
-    /// let data: ReturnedData = esi.query("GET", RequestType::Public, "abc", None, None).await.unwrap();
+    /// let data: EsiResponse<ReturnedData> = esi.query("GET", RequestType::Public, "abc", None, None).await.unwrap();
     /// # }
     /// ```
-    #[cfg(not(feature = "return_headers"))]
     pub async fn query<T: DeserializeOwned>(
         &self,
         method: &str,
@@ -523,7 +521,7 @@ impl Esi {
         endpoint: &str,
         query: Option<&[(&str, &str)]>,
         body: Option<&str>,
-    ) -> EsiResult<T> {
+    ) -> EsiResult<EsiResponse<T>> {
         debug!("Making {request_type:?} {method} request to {endpoint} with query: {query:?}");
         self.assert_not_error_limited()?;
         if request_type == RequestType::Authenticated {
@@ -559,25 +557,15 @@ impl Esi {
         };
         let req = req_builder.build()?;
         let resp = self.client.execute(req).await?;
-        self.process_error_limit_headers(resp.headers())?;
+        let resp_headers = resp.headers().to_owned();
+        self.process_error_limit_headers(&resp_headers)?;
         if !resp.status().is_success() {
             return Err(EsiError::InvalidStatusCode(resp.status().as_u16()));
         }
 
-        // TODO process response headers
-        let headers = resp.headers();
-        // X-ESI-Error-Limit-Remain
-        // X-ESI-Error-Limit-Reset
-        // expires
-
         let text = resp.text().await?;
         let data: T = serde_json::from_str(&text)?;
-        Ok(data)
-    }
-
-    #[cfg(feature = "return_headers")]
-    pub async fn query<T: DeserializeOwned>() -> EsiResult<ResponseWrapper<T>> {
-        todo!()
+        Ok(EsiResponse { data, headers: resp_headers })
     }
 
     /// Resolve an `operationId` to a URL path utilizing the Swagger spec.

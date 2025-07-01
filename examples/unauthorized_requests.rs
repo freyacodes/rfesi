@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     esi.update_spec().await?;
     let alliances = esi.group_alliance().list_ids().await?;
-    info!("Found {} alliances", alliances.len());
+    info!("Found {} alliances", alliances.data.len());
 
     Ok(())
 }

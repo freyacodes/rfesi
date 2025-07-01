@@ -11,7 +11,7 @@ impl UserInterfaceGroup<'_> {
         &self,
         character_id: u64,
         type_id: i32,
-    ) -> EsiResult<()> {
+    ) -> EsiResult<EsiResponse<()>> {
         // not using the macro since it doesn't like no body
         let path = self
             .esi
