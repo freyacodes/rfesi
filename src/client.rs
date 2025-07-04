@@ -7,16 +7,16 @@ use base64::engine::{general_purpose::STANDARD as base64, Engine};
 use log::{debug, error, warn};
 #[cfg(feature = "random_state")]
 use rand::{distributions::Alphanumeric, Rng};
-use reqwest::{header::{self, HeaderMap, HeaderValue}, Client, Method, Response};
+use reqwest::{header::{self, HeaderMap, HeaderValue}, Client, Method};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use std::cell::Cell;
 use std::{
     collections::HashMap,
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
-use thiserror::__private::AsDynError;
+use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+use std::sync::atomic::Ordering::Relaxed;
 
 const BASE_URL: &str = "https://esi.evetech.net/";
 const AUTHORIZE_URL: &str = "https://login.eveonline.com/v2/oauth/authorize";
@@ -42,10 +42,10 @@ struct RefreshTokenAuthenticateResponse {
     refresh_token: String,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 struct ErrorLimitState {
-    remaining_limit: i32,
-    expires_at_millis: i64,
+    remaining_limit: AtomicI32,
+    expires_at_millis: AtomicI64,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -103,7 +103,7 @@ pub struct EsiResponse<T> {
 ///     .build()
 ///     .unwrap();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Esi {
     pub(crate) version: String,
     pub(crate) client_id: Option<String>,
@@ -124,7 +124,7 @@ pub struct Esi {
     /// HTTP client
     pub(crate) client: Client,
     pub(crate) spec: Option<Value>,
-    error_limit_state: Cell<Option<ErrorLimitState>>,
+    error_limit_state: ErrorLimitState,
 }
 
 impl Esi {
@@ -150,7 +150,10 @@ impl Esi {
             refresh_token: builder.refresh_token,
             client,
             spec: builder.spec,
-            error_limit_state: Cell::new(None),
+            error_limit_state: ErrorLimitState {
+                remaining_limit: AtomicI32::new(i32::MAX),
+                expires_at_millis: AtomicI64::new(0)
+            },
         };
         Ok(e)
     }
@@ -672,10 +675,8 @@ impl Esi {
 
                 let expires_at_millis = current_time_millis()? + resets_in * 1000;
 
-                self.error_limit_state.set(Some(ErrorLimitState {
-                    remaining_limit,
-                    expires_at_millis,
-                }));
+                self.error_limit_state.expires_at_millis.store(expires_at_millis, Relaxed);
+                self.error_limit_state.remaining_limit.store(remaining_limit, Relaxed);
                 Ok(())
             }
             _ => Ok(()),
@@ -693,21 +694,16 @@ impl Esi {
     ///
     /// If this returns true, then this client will refuse to process further requests.
     pub fn is_error_limited(&self) -> Result<ErrorLimitStatus, EsiError> {
-        match &self.error_limit_state.get() {
-            None => Ok(NotLimited),
-            Some(state) => {
-                if state.remaining_limit > 0 {
-                    return Ok(NotLimited);
-                }
-                let remaining_time = state.expires_at_millis - current_time_millis()?;
-                if remaining_time < 0 {
-                    return Ok(NotLimited);
-                }
-                Ok(Limited {
-                    for_millis: remaining_time,
-                })
-            }
+        if self.error_limit_state.remaining_limit.load(Relaxed) > 0 {
+            return Ok(NotLimited);
         }
+        let remaining_time = self.error_limit_state.expires_at_millis.load(Relaxed) - current_time_millis()?;
+        if remaining_time < 0 {
+            return Ok(NotLimited);
+        }
+        Ok(Limited {
+            for_millis: remaining_time,
+        })
     }
 
     /// Retrieve this struct's OpenAPI specification.
