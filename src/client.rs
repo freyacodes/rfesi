@@ -15,7 +15,7 @@ use std::{
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
-use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64};
 use std::sync::atomic::Ordering::Relaxed;
 
 const BASE_URL: &str = "https://esi.evetech.net/";
