@@ -101,4 +101,14 @@ impl MarketGroup<'_> {
         Vec<CharacterOrder>,
         (character_id: i32) => "{character_id}"
     );
+
+    api_get!(
+        /// Get a list of item type IDs which are on the markets in this region
+        get_region_id_types,
+        "get_markets_region_id_types",
+        RequestType::Public,
+        Vec<i32>,
+        (region_id: i32) => "{region_id}";
+        Optional(page: i32) => "page"
+    );
 }
